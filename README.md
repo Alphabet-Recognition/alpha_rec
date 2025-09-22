@@ -1,1 +1,1 @@
-# alpha_rec
+# When clone this repo, use "pip install -r requirements.txt" on the terminal.
