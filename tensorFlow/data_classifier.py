@@ -61,7 +61,7 @@ test_loss, test_acc = model.evaluate(test_ds, verbose=2)
 print(f"Test accuracy: {test_acc:.4f}")
 
 # predict
-for images, labels in test_ds.take(1):
+for images, labels in test_ds:
     preds = model.predict(images)
     for i in range(len(labels)):
         print(f"ทำนาย: {class_names[np.argmax(labels[i])]} | ผล: {class_names[np.argmax(preds[i])]}")
