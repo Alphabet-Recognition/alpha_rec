@@ -8,10 +8,18 @@ test_dir = pathlib.Path("tensorFlow/dataset/test")
 img_height, img_width = 64, 64
 batch_size = 32
 
+data_augmentation = tf.keras.Sequential([
+    tf.keras.layers.RandomFlip("horizontal"),
+    tf.keras.layers.RandomRotation(0.1),        
+    tf.keras.layers.RandomZoom(0.1),    
+    tf.keras.layers.RandomTranslation(0.1, 0.1),
+    tf.keras.layers.RandomContrast(0.1)       
+])
+
 train_ds = tf.keras.utils.image_dataset_from_directory(
     train_dir,
     labels="inferred",           
-    label_mode="categorical",    
+    label_mode="categorical",
     image_size=(img_height, img_width),
     batch_size=batch_size,
     shuffle=True
@@ -37,6 +45,7 @@ test_ds = test_ds.map(lambda x, y: (normalization_layer(x), y))
 
 # create CNN
 model = tf.keras.Sequential([
+    data_augmentation,
     tf.keras.layers.Conv2D(32, (3,3), activation="relu", input_shape=(img_height, img_width, 3)),
     tf.keras.layers.MaxPooling2D((2,2)),
     tf.keras.layers.Conv2D(64, (3,3), activation="relu"),
@@ -54,14 +63,14 @@ model.compile(optimizer="adam",
               metrics=["accuracy"])
 
 # train
-model.fit(train_ds, epochs=10, validation_data=test_ds)
+model.fit(train_ds, epochs=30, validation_data=test_ds)
 
 # acc, loss
 test_loss, test_acc = model.evaluate(test_ds, verbose=2)
 print(f"Test accuracy: {test_acc:.4f}")
 
 # predict
-for images, labels in test_ds:
-    preds = model.predict(images)
-    for i in range(len(labels)):
+for images, labels in test_ds: 
+    preds = model.predict(images) 
+    for i in range(len(labels)): 
         print(f"ข้อความ: {class_names[np.argmax(labels[i])]} | ผล: {class_names[np.argmax(preds[i])]}")
