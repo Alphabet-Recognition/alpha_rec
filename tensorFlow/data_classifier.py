@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow_addons as tfa
 import numpy as np
 import pathlib
 
@@ -13,7 +14,14 @@ data_augmentation = tf.keras.Sequential([
     tf.keras.layers.RandomRotation(0.1),        
     tf.keras.layers.RandomZoom(0.1),    
     tf.keras.layers.RandomTranslation(0.1, 0.1),
-    tf.keras.layers.RandomContrast(0.1)       
+    tf.keras.layers.RandomBrightness(factor=0.2),
+    tf.keras.layers.RandomContrast(factor=0.2),    
+    tf.keras.layers.GaussianNoise(0.1),
+    tfa.layers.GaussianBlur2D(
+        kernel_size=3, sigma=1.0, padding='VALID'
+    ),
+    tf.keras.layers.RandomSaturation(factor=0.3),
+    tf.keras.layers.RandomHue(factor=0.2),
 ])
 
 train_ds = tf.keras.utils.image_dataset_from_directory(
@@ -62,8 +70,14 @@ model.compile(optimizer="adam",
               loss="categorical_crossentropy",
               metrics=["accuracy"])
 
+callback = tf.keras.callbacks.EarlyStopping(
+    monitor="val_accuracy", 
+    patience=5,           
+    restore_best_weights=True
+)
+
 # train
-model.fit(train_ds, epochs=30, validation_data=test_ds)
+model.fit(train_ds, epochs=20, validation_data=test_ds, callbacks=[callback])
 
 # acc, loss
 test_loss, test_acc = model.evaluate(test_ds, verbose=2)
