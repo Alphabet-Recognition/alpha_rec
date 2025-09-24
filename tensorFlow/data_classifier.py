@@ -110,7 +110,7 @@ callback = tf.keras.callbacks.EarlyStopping(
 reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
     monitor="val_loss",
     factor=0.5,
-    patience=3,
+    patience=5,
     min_lr=1e-6
 )
 
