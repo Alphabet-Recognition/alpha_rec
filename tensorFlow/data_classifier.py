@@ -2,8 +2,8 @@ import tensorflow as tf
 import numpy as np
 import pathlib
 
-train_dir = pathlib.Path("tensorFlow/dataset/train")
-test_dir = pathlib.Path("tensorFlow/dataset/test")
+train_dir = pathlib.Path("tensorFlow/hand_landmark_dataset/train")
+test_dir = pathlib.Path("tensorFlow/hand_landmark_dataset/test")
 
 class GaussianBlurLayer(tf.keras.layers.Layer):
     def __init__(self, kernel_size=3, sigma=1.0, **kwargs):
