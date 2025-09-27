@@ -126,3 +126,4 @@ for images, labels in test_ds:
     preds = model.predict(images) 
     for i in range(len(labels)): 
         print(f"ข้อความ: {class_names[np.argmax(labels[i])]} | ผล: {class_names[np.argmax(preds[i])]}")
+model.save("hand_cnn_model.keras")
