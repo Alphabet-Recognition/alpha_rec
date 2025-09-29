@@ -109,6 +109,7 @@ class HandGUI:
 
         preds = self.model.predict(hand_img, verbose=0)
         class_id = int(np.argmax(preds[0]))
+        print(class_id, self.class_names[class_id], preds[0][class_id])
         return self.class_names[class_id], float(preds[0][class_id])
 
     def apply_prediction(self, pred_class):
@@ -130,7 +131,9 @@ class HandGUI:
         if not success or frame is None or frame.size == 0:
             self.root.after(self.FRAME_DELAY_MS, self.update_frame)
             return
-
+        
+        GREEN = (0, 255, 0) 
+        RED = (0, 0, 255)  
         frame = cv2.flip(frame, 1)
         try:
             h, w = frame.shape[:2]
@@ -141,12 +144,9 @@ class HandGUI:
 
         if (self._frame_counter % self.PROCESS_EVERY_N) == 0:
             try:
-                hands, processed_small = self.detector.findHands(small, draw=True)
+                hands, _ = self.detector.findHands(small, draw=False) 
                 self.latest_hands = hands if hands is not None else []
-                processed = cv2.resize(processed_small, (w, h), interpolation=cv2.INTER_LINEAR)
-                self.current_frame_bgr = processed
             except Exception:
-                self.current_frame_bgr = frame
                 self.latest_hands = []
 
             if self.latest_hands:
@@ -154,6 +154,39 @@ class HandGUI:
                 if result:
                     pred_class, conf = result
                     self.apply_prediction(pred_class)
+    
+        draw_scale_x = w / small.shape[1]
+        draw_scale_y = h / small.shape[0]
+
+        for hand in self.latest_hands:
+            x, y, w_bbox, h_bbox = hand['bbox']
+            x_orig = int(x * draw_scale_x)
+            y_orig = int(y * draw_scale_y)
+            w_orig = int(w_bbox * draw_scale_x)
+            h_orig = int(h_bbox * draw_scale_y)
+            cv2.rectangle(frame, (x_orig, y_orig), (x_orig + w_orig, y_orig + h_orig), (255, 0, 255), 3)
+
+            lmList = hand['lmList']
+            connections = [
+                (0, 1), (1, 2), (2, 3), (3, 4),    
+                (0, 5), (5, 6), (6, 7), (7, 8),    
+                (5, 9), (9, 10), (10, 11), (11, 12), 
+                (9, 13), (13, 14), (14, 15), (15, 16),
+                (13, 17), (17, 18), (18, 19), (19, 20),
+                (0, 17)                              
+            ]
+            
+            for p1_idx, p2_idx in connections:
+                p1 = lmList[p1_idx]
+                p2 = lmList[p2_idx]
+                pt1 = (int(p1[0] * draw_scale_x), int(p1[1] * draw_scale_y))
+                pt2 = (int(p2[0] * draw_scale_x), int(p2[1] * draw_scale_y))
+                cv2.line(frame, pt1, pt2, RED, 2)
+
+            for x, y, _ in lmList:
+                center = (int(x * draw_scale_x), int(y * draw_scale_y))
+                cv2.circle(frame, center, 5, GREEN, cv2.FILLED)
+        self.current_frame_bgr = frame
 
         if self.current_frame_bgr is None:
             self.current_frame_bgr = frame

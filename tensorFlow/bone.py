@@ -16,8 +16,8 @@ def process_image(img_path, save_path, hands):
             mp_drawing.draw_landmarks(
                 image_bgr, hand_lms,
                 mp_hands.HAND_CONNECTIONS,
-                landmark_drawing_spec=mp_drawing.DrawingSpec(color=(255, 0, 255), thickness=4, circle_radius=2),
-                connection_drawing_spec=mp_drawing.DrawingSpec(color=(20, 180, 90), thickness=2, circle_radius=2)
+                landmark_drawing_spec=mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=4, circle_radius=2),
+                connection_drawing_spec=mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2, circle_radius=2)
             )
     cv2.imwrite(save_path, image_bgr)
 
@@ -36,4 +36,3 @@ if __name__ == "__main__":
     base_dir = "tensorFlow/dataset"
     with mp_hands.Hands(min_detection_confidence=0.8, min_tracking_confidence=0.5) as hands:
         process_folder(os.path.join(base_dir, "train"), hands)
-        process_folder(os.path.join(base_dir, "test"), hands)
