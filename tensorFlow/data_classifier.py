@@ -3,6 +3,7 @@ import numpy as np
 import pathlib
 
 train_dir = pathlib.Path("tensorFlow/dataset/train")
+print("Num GPUs Available:", len(tf.config.list_physical_devices('GPU')))
 
 img_height, img_width = 224, 224
 batch_size = 32
@@ -48,7 +49,7 @@ data_augmentation = tf.keras.Sequential([
 ])
 
 train_ds = train_ds.map(lambda x, y: (data_augmentation(x, training=True), y))
-train_ds = train_ds.cache().shuffle(1000).prefetch(tf.data.AUTOTUNE)
+train_ds = train_ds.cache().shuffle(28080).prefetch(tf.data.AUTOTUNE)
 val_ds = val_ds.cache().prefetch(tf.data.AUTOTUNE)
 
 # Model
@@ -94,7 +95,7 @@ reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
 # Train
 history = model.fit(
     train_ds,
-    epochs=20,
+    epochs=40,
     validation_data=val_ds,
     callbacks=[callback, reduce_lr]
 )

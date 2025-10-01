@@ -9,7 +9,7 @@ class HandGUI:
     def __init__(self, model=None, class_names=None):
         self.model = model
         self.class_names = class_names or []
-        self.img_height, self.img_width = 64, 64
+        self.img_height, self.img_width = 224, 224
 
         # Prediction buffer (like typed text)
         self.global_variable = ""
@@ -91,7 +91,7 @@ class HandGUI:
             self.cap.release()
         self.root.destroy()
 
-    def crop_hand_square(self, frame, hand, size=224, margin=20):
+    def crop_hand_square(self, frame, hand, margin=20):
         lmList = hand["lmList"]
 
         xs = [lm[0] for lm in lmList]
@@ -109,10 +109,10 @@ class HandGUI:
         if crop.size == 0:
             return None
 
-        crop = cv2.resize(crop, (size, size))
+        crop = cv2.resize(crop, (self.img_width, self.img_height))
         return crop
 
-    def predict_hand(self, frame, hand, size=224, margin=20):
+    def predict_hand(self, frame, hand, margin=20):
         lmList = hand["lmList"]
 
         if not lmList:
@@ -131,7 +131,7 @@ class HandGUI:
         if crop.size == 0:
             return None
         
-        crop = cv2.resize(crop, (size, size))
+        crop = cv2.resize(crop, (self.img_width, self.img_height))
         crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
         crop = crop.astype("float32") / 255.0
         crop = np.expand_dims(crop, axis=0)

@@ -2,3 +2,4 @@ tensorflow
 opencv-python
 mediapipe
 cvzone
+tensorflow[and-cuda]
