@@ -91,37 +91,72 @@ class HandGUI:
             self.cap.release()
         self.root.destroy()
 
-    def predict_hand(self, frame, hand_box):
-        if self.model is None:
+    def crop_hand_square(self, frame, hand, size=224, margin=20):
+        lmList = hand["lmList"]
+
+        xs = [lm[0] for lm in lmList]
+        ys = [lm[1] for lm in lmList]
+
+        x_min, x_max = min(xs), max(xs)
+        y_min, y_max = min(ys), max(ys)
+
+        x_min = max(0, x_min - margin)
+        y_min = max(0, y_min - margin)
+        x_max = min(frame.shape[1], x_max + margin)
+        y_max = min(frame.shape[0], y_max + margin)
+
+        crop = frame[y_min:y_max, x_min:x_max]
+        if crop.size == 0:
             return None
 
-        x, y, w, h = hand_box["bbox"]
-        x1, y1 = max(0, x), max(0, y)
-        x2, y2 = min(frame.shape[1], x + w), min(frame.shape[0], y + h)
-        hand_img = frame[y1:y2, x1:x2]
+        crop = cv2.resize(crop, (size, size))
+        return crop
 
-        if hand_img.size == 0:
+    def predict_hand(self, frame, hand, size=224, margin=20):
+        lmList = hand["lmList"]
+
+        if not lmList:
             return None
 
-        hand_img = cv2.resize(hand_img, (self.img_width, self.img_height))
-        hand_img = hand_img.astype("float32") / 127.5 - 1.0
-        hand_img = np.expand_dims(hand_img, axis=0)
+        xs = [lm[0] for lm in lmList]
+        ys = [lm[1] for lm in lmList]
+        x_min, x_max = min(xs), max(xs)
+        y_min, y_max = min(ys), max(ys)
+        x_min = max(0, x_min - margin)
+        y_min = max(0, y_min - margin)
+        x_max = min(frame.shape[1], x_max + margin)
+        y_max = min(frame.shape[0], y_max + margin)
 
-        preds = self.model.predict(hand_img, verbose=0)
-        class_id = int(np.argmax(preds[0]))
-        print(class_id, self.class_names[class_id], preds[0][class_id])
-        return self.class_names[class_id], float(preds[0][class_id])
+        crop = frame[y_min:y_max, x_min:x_max]
+        if crop.size == 0:
+            return None
+        
+        crop = cv2.resize(crop, (size, size))
+        crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        crop = crop.astype("float32") / 255.0
+        crop = np.expand_dims(crop, axis=0)
 
+        prediction = self.model.predict(crop)
+        pred_index = np.argmax(prediction, axis=1)[0]
+        confidence = float(np.max(prediction))
+        print("Predicted index:", pred_index, "Confidence:", confidence)
+
+        if self.class_names:
+            print("Predicted class name:", self.class_names[pred_index])
+
+        return pred_index, confidence
+    
     def apply_prediction(self, pred_class):
-        """Update global_variable text based on prediction class."""
-        if pred_class == "del":
+        pred_class_str = str(pred_class)
+
+        if pred_class_str == "del":
             self.global_variable = self.global_variable[:-1]
-        elif pred_class == "space":
+        elif pred_class_str == "space":
             self.global_variable += " "
-        elif pred_class == "nothing":
+        elif pred_class_str == "nothing":
             pass  # ignore
         else:
-            self.global_variable += pred_class
+            self.global_variable += pred_class_str
 
         self.variable_label.config(text=self.global_variable)
 
@@ -131,10 +166,12 @@ class HandGUI:
         if not success or frame is None or frame.size == 0:
             self.root.after(self.FRAME_DELAY_MS, self.update_frame)
             return
-        
-        GREEN = (0, 255, 0) 
-        RED = (0, 0, 255)  
+
+        GREEN = (0, 255, 0)
+        RED = (0, 0, 255)
         frame = cv2.flip(frame, 1)
+
+        # Resize for hand detection
         try:
             h, w = frame.shape[:2]
             scale = self.DETECT_WIDTH / float(w) if w > self.DETECT_WIDTH else 1.0
@@ -142,22 +179,31 @@ class HandGUI:
         except Exception:
             small = frame
 
+        # Process every N frames
         if (self._frame_counter % self.PROCESS_EVERY_N) == 0:
             try:
-                hands, _ = self.detector.findHands(small, draw=False) 
+                hands, _ = self.detector.findHands(small, draw=False)
                 self.latest_hands = hands if hands is not None else []
             except Exception:
                 self.latest_hands = []
 
+            # Predict hand gesture
             if self.latest_hands:
                 result = self.predict_hand(frame, self.latest_hands[0])
                 if result:
-                    pred_class, conf = result
-                    self.apply_prediction(pred_class)
-    
+                    pred_index, conf = result
+                    # Map numeric index to class name
+                    if 0 <= pred_index < len(self.class_names):
+                        pred_class_name = self.class_names[pred_index]
+                    else:
+                        pred_class_name = str(pred_index)
+                    self.apply_prediction(pred_class_name)
+
+        # Scale for drawing
         draw_scale_x = w / small.shape[1]
         draw_scale_y = h / small.shape[0]
 
+        # Draw hands
         for hand in self.latest_hands:
             x, y, w_bbox, h_bbox = hand['bbox']
             x_orig = int(x * draw_scale_x)
@@ -168,14 +214,13 @@ class HandGUI:
 
             lmList = hand['lmList']
             connections = [
-                (0, 1), (1, 2), (2, 3), (3, 4),    
-                (0, 5), (5, 6), (6, 7), (7, 8),    
-                (5, 9), (9, 10), (10, 11), (11, 12), 
+                (0, 1), (1, 2), (2, 3), (3, 4),
+                (0, 5), (5, 6), (6, 7), (7, 8),
+                (5, 9), (9, 10), (10, 11), (11, 12),
                 (9, 13), (13, 14), (14, 15), (15, 16),
                 (13, 17), (17, 18), (18, 19), (19, 20),
-                (0, 17)                              
+                (0, 17)
             ]
-            
             for p1_idx, p2_idx in connections:
                 p1 = lmList[p1_idx]
                 p2 = lmList[p2_idx]
@@ -183,14 +228,13 @@ class HandGUI:
                 pt2 = (int(p2[0] * draw_scale_x), int(p2[1] * draw_scale_y))
                 cv2.line(frame, pt1, pt2, RED, 2)
 
-            for x, y, _ in lmList:
-                center = (int(x * draw_scale_x), int(y * draw_scale_y))
+            for x_lm, y_lm, _ in lmList:
+                center = (int(x_lm * draw_scale_x), int(y_lm * draw_scale_y))
                 cv2.circle(frame, center, 5, GREEN, cv2.FILLED)
-        self.current_frame_bgr = frame
 
-        if self.current_frame_bgr is None:
-            self.current_frame_bgr = frame
+        self.current_frame_bgr = frame if frame is not None else self.current_frame_bgr
 
+        # Convert to RGB and display
         try:
             img_rgb = cv2.cvtColor(self.current_frame_bgr, cv2.COLOR_BGR2RGB)
         except Exception:
@@ -212,6 +256,7 @@ class HandGUI:
         self.canvas.image = imgtk
 
         self.root.after(self.FRAME_DELAY_MS, self.update_frame)
+
 
     def run(self):
         self.update_frame()

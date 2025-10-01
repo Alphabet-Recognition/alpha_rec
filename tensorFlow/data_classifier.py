@@ -4,7 +4,7 @@ import pathlib
 
 train_dir = pathlib.Path("tensorFlow/dataset/train")
 
-img_height, img_width = 64, 64
+img_height, img_width = 224, 224
 batch_size = 32
 
 # Load dataset
@@ -41,12 +41,19 @@ train_ds = train_ds.map(lambda x, y: (normalization_layer(x), y),
 val_ds = val_ds.map(lambda x, y: (normalization_layer(x), y),
                     num_parallel_calls=tf.data.AUTOTUNE)
 
-train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
-val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
+data_augmentation = tf.keras.Sequential([
+    tf.keras.layers.RandomFlip("horizontal"),
+    tf.keras.layers.RandomRotation(0.1),
+    tf.keras.layers.RandomZoom(0.1),
+])
+
+train_ds = train_ds.map(lambda x, y: (data_augmentation(x, training=True), y))
+train_ds = train_ds.cache().shuffle(1000).prefetch(tf.data.AUTOTUNE)
+val_ds = val_ds.cache().prefetch(tf.data.AUTOTUNE)
 
 # Model
 model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(64, 64, 3)),
+    tf.keras.layers.Input(shape=(224, 224, 3)),
     tf.keras.layers.Conv2D(32, 3, activation="relu"),
     tf.keras.layers.BatchNormalization(),
     tf.keras.layers.Conv2D(64, 3, activation="relu"),
