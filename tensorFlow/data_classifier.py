@@ -49,7 +49,7 @@ data_augmentation = tf.keras.Sequential([
 ])
 
 train_ds = train_ds.map(lambda x, y: (data_augmentation(x, training=True), y))
-train_ds = train_ds.cache().shuffle(28080).prefetch(tf.data.AUTOTUNE)
+train_ds = train_ds.cache().shuffle(1000).prefetch(tf.data.AUTOTUNE)
 val_ds = val_ds.cache().prefetch(tf.data.AUTOTUNE)
 
 # Model

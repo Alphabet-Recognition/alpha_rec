@@ -132,6 +132,10 @@ class HandGUI:
             return None
         
         crop = cv2.resize(crop, (self.img_width, self.img_height))
+        
+        debug_preview = cv2.resize(crop, (self.size, self.size)) 
+        cv2.imshow("Hand Crop", debug_preview)
+        
         crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
         crop = crop.astype("float32") / 255.0
         crop = np.expand_dims(crop, axis=0)
