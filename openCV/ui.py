@@ -9,7 +9,7 @@ class HandGUI:
     def __init__(self, model=None, class_names=None):
         self.model = model
         self.class_names = class_names or []
-        self.img_height, self.img_width = 224, 224
+        self.img_height, self.img_width = 160, 160
 
         # Prediction buffer (like typed text)
         self.global_variable = ""
@@ -91,7 +91,29 @@ class HandGUI:
             self.cap.release()
         self.root.destroy()
 
-    def crop_hand_square(self, frame, hand, margin=20):
+    def is_hand_fully_visible(self, hand, frame, margin=30, threshold=0.85):
+        h, w, _ = frame.shape
+        x, y, w_box, h_box = hand['bbox']
+
+        # Compute hand box area
+        hand_area = w_box * h_box
+
+        # Compute visible region within frame boundaries
+        x1 = max(0, x - margin)
+        y1 = max(0, y - margin)
+        x2 = min(w, x + w_box + margin)
+        y2 = min(h, y + h_box + margin)
+
+        visible_width = max(0, x2 - x1)
+        visible_height = max(0, y2 - y1)
+        visible_area = visible_width * visible_height
+
+        # Compute visibility ratio
+        visible_ratio = visible_area / float(hand_area + 1e-5)
+
+        return visible_ratio >= threshold
+
+    def crop_hand_square(self, frame, hand, margin=30):
         lmList = hand["lmList"]
 
         xs = [lm[0] for lm in lmList]
@@ -112,8 +134,12 @@ class HandGUI:
         crop = cv2.resize(crop, (self.img_width, self.img_height))
         return crop
 
-    def predict_hand(self, frame, hand, margin=20):
+    def predict_hand(self, frame, hand, margin=30):
         lmList = hand["lmList"]
+
+        if not self.is_hand_fully_visible(hand, frame):
+            print("⚠️ Hand not fully visible, skipping prediction.")
+            return None
 
         if not lmList:
             return None
@@ -133,11 +159,11 @@ class HandGUI:
         
         crop = cv2.resize(crop, (self.img_width, self.img_height))
         
-        debug_preview = cv2.resize(crop, (self.size, self.size)) 
+        debug_preview = cv2.resize(crop, (self.img_width, self.img_height)) 
         cv2.imshow("Hand Crop", debug_preview)
         
         crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-        crop = crop.astype("float32") / 255.0
+        crop = crop.astype("float64") / 255.0
         crop = np.expand_dims(crop, axis=0)
 
         prediction = self.model.predict(crop)
