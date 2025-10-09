@@ -177,7 +177,7 @@ class HandGUI:
 
         return visible_ratio >= threshold
 
-    def crop_hand_square(self, frame, hand, margin=30):
+    def crop_hand_square(self, frame, hand, margin=130):
         lmList = hand["lmList"]
 
         xs = [lm[0] for lm in lmList]
