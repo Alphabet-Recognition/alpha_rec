@@ -1,12 +1,12 @@
-tensorflow 
 keras 
 scikit-learn 
-numpy 
+numpy<2 
 pandas 
 matplotlib 
 seaborn 
 tqdm 
-opencv-python==4.8.1.78
+tensorflow>=2.15
+opencv-python>=4.9
 scikit-image
 cvzone
 mediapipe

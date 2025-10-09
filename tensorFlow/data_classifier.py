@@ -19,7 +19,7 @@ from sklearn.utils import shuffle
 from tqdm import tqdm
 import sklearn.metrics
 
-imageSize = 160
+imageSize = 64
 train_dir = "tensorflow/dataset/train/"
 
 def get_data(folder):
@@ -28,14 +28,12 @@ def get_data(folder):
     
     # Label mapping
     label_map = {
-        '0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
-        '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
-        'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14,
-        'F': 15, 'G': 16, 'H': 17, 'I': 18, 'J': 19,
-        'K': 20, 'L': 21, 'M': 22, 'N': 23, 'O': 24,
-        'P': 25, 'Q': 26, 'R': 27, 'S': 28, 'T': 29,
-        'U': 30, 'V': 31, 'W': 32, 'X': 33, 'Y': 34,
-        'Z': 35, 'del': 36, 'nothing': 37, 'space': 38
+        'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E': 4,
+        'F': 5, 'G': 6, 'H': 7, 'I': 8, 'J': 9,
+        'K': 10, 'L': 11, 'M': 12, 'N': 13, 'O': 14,
+        'P': 15, 'Q': 16, 'R': 17, 'S': 18, 'T': 19,
+        'U': 20, 'V': 21, 'W': 22, 'X': 23, 'Y': 24,
+        'Z': 25, 'del': 26, 'nothing': 27, 'space': 28
     }
     
     for folderName in os.listdir(folder):
