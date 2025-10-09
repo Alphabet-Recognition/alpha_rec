@@ -292,25 +292,48 @@ class HandGUI:
         try:
             h, w = frame.shape[:2]
             scale = self.DETECT_WIDTH / float(w) if w > self.DETECT_WIDTH else 1.0
-            small = cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_LINEAR)
+            small_w = max(1, int(w * scale))
+            small_h = max(1, int(h * scale))
+            small = cv2.resize(frame, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
         except Exception:
             small = frame
+            small_h, small_w = frame.shape[:2]
 
         # Process every N frames, but skip detection/prediction while paused.
         if time.time() >= self._paused_until:
             if (self._frame_counter % self.PROCESS_EVERY_N) == 0:
                 try:
                     hands, _ = self.detector.findHands(small, draw=False)
-                    self.latest_hands = hands if hands is not None else []
+                    if hands:
+                        # scale detected coordinates from small -> original frame
+                        scale_x = float(w) / float(small_w)
+                        scale_y = float(h) / float(small_h)
+                        scaled_hands = []
+                        for hand in hands:
+                            # scale lmList
+                            lm = hand.get("lmList", [])
+                            scaled_lm = [[int(pt[0] * scale_x), int(pt[1] * scale_y), pt[2] if len(pt) > 2 else 0] for pt in lm]
+                            # scale bbox (x, y, w, h)
+                            bx, by, bw_box, bh_box = hand.get("bbox", (0, 0, 0, 0))
+                            bx = int(bx * scale_x)
+                            by = int(by * scale_y)
+                            bw_box = int(bw_box * scale_x)
+                            bh_box = int(bh_box * scale_y)
+                            scaled_hand = hand.copy()
+                            scaled_hand["lmList"] = scaled_lm
+                            scaled_hand["bbox"] = (bx, by, bw_box, bh_box)
+                            scaled_hands.append(scaled_hand)
+                        self.latest_hands = scaled_hands
+                    else:
+                        self.latest_hands = []
                 except Exception:
                     self.latest_hands = []
 
-                # Predict hand gesture
+                # Predict hand gesture using scaled coordinates on original frame
                 if self.latest_hands:
                     result = self.predict_hand(frame, self.latest_hands[0])
                     if result:
                         pred_index, conf = result
-                        # Map numeric index to class name
                         if 0 <= pred_index < len(self.class_names):
                             pred_class_name = self.class_names[pred_index]
                         else:
@@ -318,11 +341,11 @@ class HandGUI:
                         self.apply_prediction(pred_class_name)
         else:
             # During pause period, do not call detector/model.
-            # Keep latest_hands as-is or clear if preferred; here we keep it to avoid flicker.
             pass
-        # Scale for drawing
-        draw_scale_x = w / small.shape[1]
-        draw_scale_y = h / small.shape[0]
+
+        # latest_hands are in original-frame coordinates, so drawing uses scale 1
+        draw_scale_x = 1.0
+        draw_scale_y = 1.0
 
         # Draw hands
         for hand in self.latest_hands:
