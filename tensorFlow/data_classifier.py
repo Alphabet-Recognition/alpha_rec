@@ -3,11 +3,12 @@ import cv2
 import numpy as np
 import random
 import itertools
-import pandas as pd
 import matplotlib.pyplot as plt
 import skimage.transform
 from glob import glob
 from tqdm import tqdm
+from PIL import Image
+import random, math
 
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle, class_weight
@@ -19,11 +20,10 @@ from keras.layers import Dense, Flatten
 from keras.applications.vgg16 import VGG16
 from keras.utils import to_categorical
 from keras.callbacks import Callback
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
 
 imageSize = 96
 train_dir = "tensorflow/dataset/train"
-test_dir  = "tensorflow/dataset/test" 
 
 def get_data(folder):
     X, y = [], []
@@ -49,6 +49,99 @@ def get_data(folder):
                 y.append(label)
     return np.asarray(X), np.asarray(y)
 
+class MatrixTransformer:
+    def __init__(self, horizontal_flip=True, rotation_range=10,
+                 width_shift_range=0.1, height_shift_range=0.1,
+                 zoom_range=0.1, seed=None):
+        self.horizontal_flip = horizontal_flip
+        self.rotation_range = rotation_range
+        self.width_shift_range = width_shift_range
+        self.height_shift_range = height_shift_range
+        self.zoom_range = zoom_range
+        self.seed = seed
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+            
+    def flow_with_weights(self, X, y=None, batch_size=32, shuffle=True, class_weight=None):
+        n = X.shape[0]
+        indices = np.arange(n)
+        while True:
+            if shuffle:
+                np.random.shuffle(indices)
+            for start in range(0, n, batch_size):
+                end = min(start + batch_size, n)
+                batch_idx = indices[start:end]
+                X_batch = np.array([self._augment_image(X[i]) for i in batch_idx])
+                if y is not None:
+                    y_batch = y[batch_idx]
+                    if class_weight is not None:
+                        sample_weight = np.array([class_weight[np.argmax(y[i])] for i in batch_idx])
+                        yield X_batch, y_batch, sample_weight
+                    else:
+                        yield X_batch, y_batch
+                else:
+                    yield X_batch
+
+    def _augment_image(self, img_array):
+        img = Image.fromarray((img_array*255).astype(np.uint8))
+        w, h = img.size
+        cx, cy = w/2.0, h/2.0
+        def T(tx, ty):
+            return np.array([[1.0,0.0,tx],
+                             [0.0,1.0,ty],
+                             [0.0,0.0,1.0]])
+
+        M = np.eye(3, dtype=float)
+
+        if self.horizontal_flip and random.random() < 0.5:
+            F = np.array([[-1,0,0],
+                          [0,1,0],
+                          [0,0,1]])
+            M = T(cx, cy) @ F @ T(-cx, -cy) @ M
+
+        if self.rotation_range:
+            angle = random.uniform(-self.rotation_range/2.0, self.rotation_range/2.0)
+            rad = math.radians(angle)
+            R = np.array([[math.cos(rad), -math.sin(rad),0],
+                          [math.sin(rad), math.cos(rad),0],
+                          [0,0,1]])
+            M = T(cx,cy) @ R @ T(-cx,-cy) @ M
+
+        tx = random.uniform(-self.width_shift_range, self.width_shift_range)*w if self.width_shift_range else 0
+        ty = random.uniform(-self.height_shift_range, self.height_shift_range)*h if self.height_shift_range else 0
+        if tx != 0 or ty != 0:
+            M = T(tx, ty) @ M
+
+        if self.zoom_range:
+            z = random.uniform(1.0 - self.zoom_range, 1.0 + self.zoom_range)
+            S = np.array([[z,0,0],[0,z,0],[0,0,1]])
+            M = T(cx,cy) @ S @ T(-cx,-cy) @ M
+
+        try:
+            M_inv = np.linalg.inv(M)
+        except np.linalg.LinAlgError:
+            return img_array
+        a,b,c,d,e,f = M_inv[0,0], M_inv[0,1], M_inv[0,2], M_inv[1,0], M_inv[1,1], M_inv[1,2]
+        img = img.transform((w,h), Image.AFFINE, (a,b,c,d,e,f), resample=Image.BILINEAR)
+        return np.asarray(img)/255.0
+
+    def flow(self, X, y=None, batch_size=32, shuffle=True):
+        n = X.shape[0]
+        indices = np.arange(n)
+        while True:
+            if shuffle:
+                np.random.shuffle(indices)
+            for start in range(0, n, batch_size):
+                end = min(start + batch_size, n)
+                batch_idx = indices[start:end]
+                X_batch = np.array([self._augment_image(X[i]) for i in batch_idx])
+                if y is not None:
+                    y_batch = y[batch_idx]
+                    yield X_batch, y_batch
+                else:
+                    yield X_batch
+
 X, y = get_data(train_dir)
 print("Loaded:", X.shape, y.shape)
 
@@ -60,7 +153,7 @@ y_testHot = to_categorical(y_test, num_classes=30)
 X_train, y_trainHot = shuffle(X_train, y_trainHot, random_state=13)
 X_test, y_testHot = shuffle(X_test, y_testHot, random_state=13)
 
-# Model Preparation
+
 pretrained_model = VGG16(weights='imagenet', include_top=False, input_shape=(imageSize, imageSize, 3))
 for layer in pretrained_model.layers:
     layer.trainable = False
@@ -97,26 +190,23 @@ callbacks = [
 class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
 class_weights = dict(enumerate(class_weights))
 
-datagen = ImageDataGenerator(
+datagen = MatrixTransformer(
     horizontal_flip=True,
     rotation_range=10,
     width_shift_range=0.1,
     height_shift_range=0.1,
-    zoom_range=0.1
+    zoom_range=0.1,
+    seed=42
 )
 
-datagen.fit(X_train)
-
 history = model.fit(
-    datagen.flow(X_train, y_trainHot, batch_size=64),
+    datagen.flow_with_weights(X_train, y_trainHot, batch_size=64, class_weight=class_weights),
     validation_data=(X_test, y_testHot),
     epochs=10,
-    class_weight=class_weights,
     callbacks=callbacks,
     verbose=1
 )
 
-# Evaluation
 score = model.evaluate(X_test, y_testHot, verbose=0)
 print("Test Accuracy:", score[1])
 

@@ -13,8 +13,6 @@ class HandGUI:
         self.model = model
         self.class_names = class_names or []
         self.img_height, self.img_width = 96, 96
-
-        # Prediction buffer (like typed text)
         self.global_variable = ""
 
         # Random practice list (20 uppercase letters) - initialized but generation
@@ -29,30 +27,19 @@ class HandGUI:
         self.DETECT_WIDTH = 640
         self.PROCESS_EVERY_N = 2
         self.FRAME_DELAY_MS = 15
-
-        # Hand detector
         self.detector = HandDetector(maxHands=1, detectionCon=0.5)
-
-        # Camera
         self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
             print("Error: could not open camera", file=sys.stderr)
             sys.exit(1)
-
         self.camera_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 640
         self.camera_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 480
-
-        # Tkinter setup
         self.root = tk.Tk()
         self.root.title("Hand Tracking + CNN")
-
-        # Canvas for video
         self.canvas = tk.Canvas(self.root, width=self.camera_width, height=self.camera_height)
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self._canvas_img_id = self.canvas.create_image(0, 0, anchor=tk.NW)
         self.canvas.image = None
-
-        # Bottom overlay
         self.bottom_frame = tk.Frame(self.canvas, bd=1, relief=tk.FLAT)
         self._bottom_window_id = self.canvas.create_window(0, 0, anchor='s', window=self.bottom_frame)
         # Target label shows current letter to practice
@@ -83,12 +70,9 @@ class HandGUI:
 
         self.canvas.bind("<Configure>", self._reposition_bottom_overlay)
         self.root.after(50, self._reposition_bottom_overlay)
-
-        # Frame processing state
         self.current_frame_bgr = None
         self.latest_hands = []
         self._frame_counter = 0
-
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _reposition_bottom_overlay(self, event=None):
@@ -158,56 +142,40 @@ class HandGUI:
     def is_hand_fully_visible(self, hand, frame, margin=30, threshold=0.85):
         h, w, _ = frame.shape
         x, y, w_box, h_box = hand['bbox']
-
-        # Compute hand box area
         hand_area = w_box * h_box
-
-        # Compute visible region within frame boundaries
         x1 = max(0, x - margin)
         y1 = max(0, y - margin)
         x2 = min(w, x + w_box + margin)
         y2 = min(h, y + h_box + margin)
-
         visible_width = max(0, x2 - x1)
         visible_height = max(0, y2 - y1)
         visible_area = visible_width * visible_height
-
-        # Compute visibility ratio
         visible_ratio = visible_area / float(hand_area + 1e-5)
-
         return visible_ratio >= threshold
 
     def crop_hand_square(self, frame, hand, margin=130):
         lmList = hand["lmList"]
-
         xs = [lm[0] for lm in lmList]
         ys = [lm[1] for lm in lmList]
-
         x_min, x_max = min(xs), max(xs)
         y_min, y_max = min(ys), max(ys)
-
         x_min = max(0, x_min - margin)
         y_min = max(0, y_min - margin)
         x_max = min(frame.shape[1], x_max + margin)
         y_max = min(frame.shape[0], y_max + margin)
-
         crop = frame[y_min:y_max, x_min:x_max]
         if crop.size == 0:
             return None
-
         crop = cv2.resize(crop, (self.img_width, self.img_height))
         return crop
 
     def predict_hand(self, frame, hand, margin=30):
         lmList = hand["lmList"]
-
         if not self.is_hand_fully_visible(hand, frame):
             print("⚠️ Hand not fully visible, skipping prediction.")
             return None
-
         if not lmList:
             return None
-
         xs = [lm[0] for lm in lmList]
         ys = [lm[1] for lm in lmList]
         x_min, x_max = min(xs), max(xs)
@@ -216,7 +184,6 @@ class HandGUI:
         y_min = max(0, y_min - margin)
         x_max = min(frame.shape[1], x_max + margin)
         y_max = min(frame.shape[0], y_max + margin)
-
         crop = frame[y_min:y_max, x_min:x_max]
         if crop.size == 0:
             return None
