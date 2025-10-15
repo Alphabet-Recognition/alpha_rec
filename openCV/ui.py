@@ -12,7 +12,7 @@ class HandGUI:
     def __init__(self, model=None, class_names=None):
         self.model = model
         self.class_names = class_names or []
-        self.img_height, self.img_width = 160, 160
+        self.img_height, self.img_width = 96, 96
 
         # Prediction buffer (like typed text)
         self.global_variable = ""
