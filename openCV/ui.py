@@ -4,6 +4,9 @@ import numpy as np
 import tkinter as tk
 from PIL import Image, ImageTk
 import sys
+import random
+import string
+import time
 
 class HandGUI:
     def __init__(self, model=None, class_names=None):
@@ -13,6 +16,14 @@ class HandGUI:
 
         # Prediction buffer (like typed text)
         self.global_variable = ""
+
+        # Random practice list (20 uppercase letters) - initialized but generation
+        # will happen after the bottom overlay / labels are created so the
+        # target_label exists when update_target_label() runs.
+        self.random_list = []
+        # timestamp until which model calls / detection should be paused
+        # (seconds since epoch). 0 means no pause.
+        self._paused_until = 0.0
 
         # Performance settings
         self.DETECT_WIDTH = 640
@@ -44,6 +55,16 @@ class HandGUI:
         # Bottom overlay
         self.bottom_frame = tk.Frame(self.canvas, bd=1, relief=tk.FLAT)
         self._bottom_window_id = self.canvas.create_window(0, 0, anchor='s', window=self.bottom_frame)
+        # Target label shows current letter to practice
+        # create the target_label first; its text will be updated immediately
+        # after random list generation.
+        self.target_label = tk.Label(
+            self.bottom_frame,
+            text="Target: --",
+            font=("TkDefaultFont", 12, "bold"),
+            anchor="w", justify="left"
+        )
+        self.target_label.pack(side=tk.LEFT, padx=(6, 6), pady=6)
         self.variable_label = tk.Label(
             self.bottom_frame,
             text="Waiting for detection...",
@@ -53,8 +74,12 @@ class HandGUI:
         self.variable_label.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=6, pady=6)
         self.bottom_frame.configure(height=42)
 
-        self.copy_btn = tk.Button(self.bottom_frame, text="Copy", command=self.copy_variables)
-        self.copy_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        # Button to regenerate the random 20-letter practice list
+        self.random_btn = tk.Button(self.bottom_frame, text="Random Again", command=self.on_random_again)
+        self.random_btn.pack(side=tk.RIGHT, padx=(8, 0))
+
+        # Now that target_label exists, generate the random list and update UI.
+        self.generate_random_list()
 
         self.canvas.bind("<Configure>", self._reposition_bottom_overlay)
         self.root.after(50, self._reposition_bottom_overlay)
@@ -75,16 +100,55 @@ class HandGUI:
         self.bottom_frame.configure(width=new_w)
         self.variable_label.configure(wraplength=max(20, new_w - 80))
 
-    def copy_variables(self):
-        text = self.variable_label.cget("text")
+    def generate_random_list(self, length=20):
+        """Generate a random list of unique uppercase letters (length <= 26)."""
+        length = min(max(1, length), 26)
+        letters = list(string.ascii_uppercase)
+        self.random_list = random.sample(letters, k=length)
+        self.update_target_label()
+
+    def update_target_label(self):
+        if self.random_list:
+            self.target_label.config(text="Target: " + self.random_list[0] + "->" + str(self.random_list[1:]))
+        else:
+            self.target_label.config(text="Target: Done")
+
+    def show_temporary_popup(self, message, duration_ms=5000):
+        """Show a small undecorated popup centered over the canvas for duration_ms."""
+        # pause predictions while popup is visible
         try:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(text)
-            self.copy_btn.config(text="Copied!")
-            self.root.after(1000, lambda: self.copy_btn.config(text="Copy"))
+            self._paused_until = time.time() + (duration_ms / 1000.0)
         except Exception:
-            self.copy_btn.config(text="Error")
-            self.root.after(1000, lambda: self.copy_btn.config(text="Copy"))
+            self._paused_until = time.time() + (duration_ms / 1000.0)
+        try:
+            popup = tk.Toplevel(self.root)
+            popup.overrideredirect(True)
+            lbl = tk.Label(popup, text=message, bg="#28a745", fg="white", font=("TkDefaultFont", 14, "bold"), bd=6)
+            lbl.pack()
+
+            # Position popup centered over the canvas
+            self.root.update_idletasks()
+            canvas_x = self.canvas.winfo_rootx()
+            canvas_y = self.canvas.winfo_rooty()
+            canvas_w = max(1, self.canvas.winfo_width())
+            canvas_h = max(1, self.canvas.winfo_height())
+            popup.update_idletasks()
+            pw = popup.winfo_width()
+            ph = popup.winfo_height()
+            x = canvas_x + (canvas_w - pw) // 2
+            y = canvas_y + (canvas_h - ph) // 2
+            popup.geometry(f"+{x}+{y}")
+            popup.lift()
+            popup.after(duration_ms, popup.destroy)
+        except Exception:
+            # Fail silently if popup can't be shown
+            pass
+
+    def on_random_again(self):
+        self.generate_random_list()
+        # reset typed buffer so user starts fresh
+        self.global_variable = ""
+        self.variable_label.config(text=self.global_variable or "Waiting for detection...")
 
     def on_close(self):
         if self.cap.isOpened():
@@ -113,7 +177,7 @@ class HandGUI:
 
         return visible_ratio >= threshold
 
-    def crop_hand_square(self, frame, hand, margin=30):
+    def crop_hand_square(self, frame, hand, margin=130):
         lmList = hand["lmList"]
 
         xs = [lm[0] for lm in lmList]
@@ -177,18 +241,41 @@ class HandGUI:
         return pred_index, confidence
     
     def apply_prediction(self, pred_class):
-        pred_class_str = str(pred_class)
+        pred_class_str = str(pred_class).strip()
 
+        # Special tokens
         if pred_class_str == "del":
-            self.global_variable = self.global_variable[:-1]
+            # clear buffer (user requested delete)
+            self.global_variable = ""
         elif pred_class_str == "space":
-            self.global_variable += " "
+            # keep single space as the current buffer
+            self.global_variable = " "
         elif pred_class_str == "nothing":
-            pass  # ignore
+            # ignore (do not change buffer)
+            pass
         else:
-            self.global_variable += pred_class_str
+            # For normal predictions, keep only the latest predicted string.
+            self.global_variable = pred_class_str
 
-        self.variable_label.config(text=self.global_variable)
+        # Update typed buffer label
+        self.variable_label.config(text=self.global_variable or "Waiting for detection...")
+
+        # If the current buffer is a single alphabet letter and matches the
+        # current target, show popup, advance (pop) the random list and clear buffer.
+        if self.random_list and self.global_variable:
+            buf = self.global_variable.strip()
+            if len(buf) == 1 and buf.isalpha():
+                if buf.upper() == self.random_list[0].upper():
+                    # show short popup indicating correct match
+                    try:
+                        self.show_temporary_popup(f"Correct: {buf.upper()}", duration_ms=500)
+                    except Exception:
+                        pass
+                    # remove target and reset buffer
+                    self.random_list.pop(0)
+                    self.global_variable = ""
+                    self.variable_label.config(text="Waiting for detection...")
+                    self.update_target_label()
 
     def update_frame(self):
         self._frame_counter += 1
@@ -205,33 +292,60 @@ class HandGUI:
         try:
             h, w = frame.shape[:2]
             scale = self.DETECT_WIDTH / float(w) if w > self.DETECT_WIDTH else 1.0
-            small = cv2.resize(frame, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_LINEAR)
+            small_w = max(1, int(w * scale))
+            small_h = max(1, int(h * scale))
+            small = cv2.resize(frame, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
         except Exception:
             small = frame
+            small_h, small_w = frame.shape[:2]
 
-        # Process every N frames
-        if (self._frame_counter % self.PROCESS_EVERY_N) == 0:
-            try:
-                hands, _ = self.detector.findHands(small, draw=False)
-                self.latest_hands = hands if hands is not None else []
-            except Exception:
-                self.latest_hands = []
-
-            # Predict hand gesture
-            if self.latest_hands:
-                result = self.predict_hand(frame, self.latest_hands[0])
-                if result:
-                    pred_index, conf = result
-                    # Map numeric index to class name
-                    if 0 <= pred_index < len(self.class_names):
-                        pred_class_name = self.class_names[pred_index]
+        # Process every N frames, but skip detection/prediction while paused.
+        if time.time() >= self._paused_until:
+            if (self._frame_counter % self.PROCESS_EVERY_N) == 0:
+                try:
+                    hands, _ = self.detector.findHands(small, draw=False)
+                    if hands:
+                        # scale detected coordinates from small -> original frame
+                        scale_x = float(w) / float(small_w)
+                        scale_y = float(h) / float(small_h)
+                        scaled_hands = []
+                        for hand in hands:
+                            # scale lmList
+                            lm = hand.get("lmList", [])
+                            scaled_lm = [[int(pt[0] * scale_x), int(pt[1] * scale_y), pt[2] if len(pt) > 2 else 0] for pt in lm]
+                            # scale bbox (x, y, w, h)
+                            bx, by, bw_box, bh_box = hand.get("bbox", (0, 0, 0, 0))
+                            bx = int(bx * scale_x)
+                            by = int(by * scale_y)
+                            bw_box = int(bw_box * scale_x)
+                            bh_box = int(bh_box * scale_y)
+                            scaled_hand = hand.copy()
+                            scaled_hand["lmList"] = scaled_lm
+                            scaled_hand["bbox"] = (bx, by, bw_box, bh_box)
+                            scaled_hands.append(scaled_hand)
+                        self.latest_hands = scaled_hands
                     else:
-                        pred_class_name = str(pred_index)
-                    self.apply_prediction(pred_class_name)
+                        self.latest_hands = []
+                except Exception:
+                    self.latest_hands = []
 
-        # Scale for drawing
-        draw_scale_x = w / small.shape[1]
-        draw_scale_y = h / small.shape[0]
+                # Predict hand gesture using scaled coordinates on original frame
+                if self.latest_hands:
+                    result = self.predict_hand(frame, self.latest_hands[0])
+                    if result:
+                        pred_index, conf = result
+                        if 0 <= pred_index < len(self.class_names):
+                            pred_class_name = self.class_names[pred_index]
+                        else:
+                            pred_class_name = str(pred_index)
+                        self.apply_prediction(pred_class_name)
+        else:
+            # During pause period, do not call detector/model.
+            pass
+
+        # latest_hands are in original-frame coordinates, so drawing uses scale 1
+        draw_scale_x = 1.0
+        draw_scale_y = 1.0
 
         # Draw hands
         for hand in self.latest_hands:
