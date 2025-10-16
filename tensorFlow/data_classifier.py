@@ -202,7 +202,7 @@ datagen = MatrixTransformer(
 history = model.fit(
     datagen.flow_with_weights(X_train, y_trainHot, batch_size=64, class_weight=class_weights),
     validation_data=(X_test, y_testHot),
-    epochs=10,
+    epochs=20,
     callbacks=callbacks,
     verbose=1
 )
