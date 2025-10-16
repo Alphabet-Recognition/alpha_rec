@@ -1,4 +1,12 @@
-tensorflow
-opencv-python
-mediapipe
+keras 
+scikit-learn 
+numpy<2 
+pandas 
+matplotlib 
+seaborn 
+tqdm 
+tensorflow>=2.15
+opencv-python>=4.9
+scikit-image
 cvzone
+mediapipe
